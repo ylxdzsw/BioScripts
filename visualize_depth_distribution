@@ -1,0 +1,48 @@
+#!/usr/bin/env julia
+using PyPlot
+using DataFrames
+
+if length(ARGS) != 2
+    print(s"""
+
+        Usage: plot_depth_distribution <source_dir> <dest_dir>
+
+        Example:
+            $ mkdir coverage_distribution
+            $ ./tools/plot_depth_distribution ./result ./depth_distribution
+
+        """)
+    exit(0)
+end
+
+source_dir, dest_dir = ARGS
+
+if !isdir(dest_dir)
+    run(`mkdir -p $dest_dir`)
+end
+
+for t in ("cfdna", "gdna")
+    figure(figsize=(16, 9), dpi=120)
+
+    x, y, m = ASCIIString[], Vector{Int}[], Int[]
+
+    for i in readdir(source_dir)
+        try
+            r = readdlm("$source_dir/$i/BamQC/$(i)_cfdna/$(i)_$(t)_mark.txt")[:, 5]
+            push!(x, i)
+            push!(y, r)
+            push!(m, median(r))
+        end
+    end
+
+    boxplot(y, showfliers=false)
+    xticks(collect(1:length(x)), x, rotation=90)
+    ylabel("Coverage in Each Targeted Exon")
+
+    savefig("$dest_dir/depth_distribution_$t.png")
+    clf()
+
+    open("$dest_dir/median_of_all_$t.txt", "w") do f
+        println(f, median(m))
+    end
+end

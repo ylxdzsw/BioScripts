@@ -1,0 +1,35 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+dict = Dict{String, Dict{String, Int}}()
+
+@showprogress 1 "counting..." for i in readdir(sam_dir)
+    mut = Dict{String, Int}("$i->$j" => 0 for i in "ATCG" for j in "ATCG" if i != j)
+
+    for line in open(readlines, "$sam_dir/$i/$(i)_cfdna_snp_annovar_filtered.txt")
+        m = join(split(line, '\t')[[4,5]], "->")
+        m in keys(mut) && (mut[m] += 1)
+    end
+
+    dict[i] = mut
+end
+
+open("$sta_dir/trans_counts.tsv", "w") do fout
+    println(fout, "SAM\tTSNVs\tSNVs/KB\tA->T\tA->C\tA->G\tT->A\tT->C\tT->G\tC->A\tC->T\tC->G\tG->A\tG->T\tG->C\tTRANSI\tTRANSV\tTRANSRATE")
+
+    @showprogress 1 "caculating..." for i in readdir(sam_dir)
+        mut    = dict[i]
+        transi = sum(mut["$i->$j"] for k in ("AG", "CT") for i in k for j in k if i != j)
+        transv = sum(mut["$i->$j"] for k in ("AG", "CT") for i in k for j in "ATCG" if j ∉ k)
+        println(fout, i,
+                '\t', sum(values(mut)),
+                '\t', floor(sum(values(mut)) / 1139.889, 2),
+                '\t', join((mut["$i->$j"] for i in "ATCG" for j in "ATCG" if i != j), '\t'),
+                '\t', transi,
+                '\t', transv,
+                '\t', ceil(transi / transv * 100, 2), '%')
+    end
+end

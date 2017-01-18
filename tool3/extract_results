@@ -1,0 +1,29 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+
+if length(ARGS) != 1
+    print(s"""
+
+        Usage: extract_restuls <source_dir>
+
+        Example:
+            $ ./tools/extract_restuls ./good_coverage_result
+
+        """)
+    exit(0)
+end
+
+source_dir, sta_dir, sam_dir = car(ARGS), rel"../statistic", rel"../processed"
+
+for i in (sta_dir, sam_dir)
+    isdir(i) || run(`mkdir -p $i`)
+end
+
+@showprogress 1 "copying files..."for i in readdir(source_dir)
+    run(`mkdir $sam_dir/$i`)
+    run(`cp $source_dir/$i/$(i)_cfdna_snp_annovar.hg19_multianno.txt $sam_dir/$i/$(i)_cfdna_snp_annovar.txt`)
+    run(`cp $source_dir/$i/$(i)_cfdna_indel_annovar.hg19_multianno.txt $sam_dir/$i/$(i)_cfdna_indel_annovar.txt`)
+    run(`cp $source_dir/$i/$(i)_cfdna_rg.bam $sam_dir/$i/$(i)_cfdna_rg.bam`)
+    run(`cp $source_dir/$i/$(i)_cfdna_rg.bai $sam_dir/$i/$(i)_cfdna_rg.bai`)
+end

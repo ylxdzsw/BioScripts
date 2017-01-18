@@ -1,0 +1,97 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+using HypothesisTests
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+Samples = Set{ASCIIString}()
+
+S = Dict{Tuple{ASCIIString, ASCIIString}, Vector{Tuple{ASCIIString, ASCIIString}}}() # chr, pos -> [name, depthinfo]
+
+geneinfo = Dict{Tuple{ASCIIString, ASCIIString}, ASCIIString}() # chr, pos -> geneinfo
+
+Ncase, Nnormal = 0, 0
+
+@showprogress 1 "counting..." for i in readdir(sam_dir)
+    push!(Samples, i)
+
+    if 'C' in i
+        Ncase += 1
+    else
+        Nnormal += 1
+    end
+
+    for line in open(readlines, "$sam_dir/$i/$(i)_cfdna_indel_annovar_filtered.txt")
+        chr, pos, depthinfo = split(line, '\t')[[1,2,end]]
+
+        if (chr, pos) in keys(S)
+            push!(S[(chr, pos)], (i, depthinfo))
+        else
+            S[(chr, pos)] = [(i, depthinfo)]
+            geneinfo[(chr, pos)] = join(split(line, '\t')[6:end-4], '\t')
+        end
+    end
+end
+
+open("$sta_dir/possible_markers_pos_drill.txt", "w") do fout
+    for (k, v) in S
+        @printf(fout, "%-5s %-10s", k...)
+
+        for i in sort(map(x -> x[4:end], map(car, v)))
+            @printf(fout, "  %-3s", i)
+        end
+
+        println(fout)
+    end
+end
+
+open("$sta_dir/possible_markers_pos_fisher_test_result.txt", "w") do fout
+    println(fout, "#Chr Position Case Normal/Danger pvalue Geneinfo")
+
+    SS = Vector{Tuple{ASCIIString, ASCIIString, Float64, Float64, Float64}}()
+
+    @showprogress 1 "caculate pvalue..." for (k, v) in S
+        case = normal = 0
+
+        for i in Set(map(car, v))
+            if 'C' in i
+                case += 1
+            else
+                normal += 1
+            end
+        end
+
+        p = FisherExactTest(case, normal, Ncase - case, Nnormal - normal) |> pvalue
+
+        push!(SS, (k..., case / Ncase , normal / Nnormal, p/2))
+    end
+
+    for i in sort(SS, by=x->x[5])
+        @printf(fout, "%-5s %10s %.4f %.4f %.12f %s\n", i..., geneinfo[(i[1], i[2])])
+    end
+end
+
+Samples = sort([Samples...])
+
+for dlm in ('\t', ',')
+    suf = dlm == '\t' ? "txt" : "csv"
+    open("$sta_dir/possible_markers_by_pos.$suf", "w") do fout
+        println(fout, "Chr_Pos_Gene", dlm, join(Samples, dlm))
+
+        @showprogress 1 "transforming..." for (pos, v) in S
+            print(fout, join(pos, ':'))
+
+            for sample in Samples
+                ind = findfirst(x->car(x)==sample, v)
+                freq = ind == 0 ? -1. : let
+                    a, b, _, c, d, _ = map(parse, split(split(cadr(v[ind]), ':')[end], ','))
+                    (c+d) / (a+b)
+                end
+                print(fout, dlm, freq)
+            end
+
+            println(fout)
+        end
+    end
+end

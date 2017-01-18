@@ -1,0 +1,36 @@
+#!/usr/bin/env julia
+using PyPlot
+using OhMyJulia
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+x, y = ASCIIString[], Int[]
+
+@showprogress 1 "counting..." for i in readdir(sam_dir)
+    try
+        snv   = open(readlines, "$sam_dir/$i/$(i)_cfdna_snp_annovar_filtered_MrBam_filtered.txt")
+        push!(x, i)
+        push!(y, count(x->!startswith(x, '#'), snv))
+    catch e
+        println(STDERR, e)
+    end
+end
+
+p = sortperm(collect(1:length(x)), by=i->-y[i])
+
+figure(figsize=(21, 9), dpi=120)
+bar(collect(1:length(x)), y[p], color="m", align="center")
+xticks(collect(1:length(x)), x[p], rotation=90)
+savefig("$sta_dir/variant_counts.png")
+clf()
+
+open("$sta_dir/variant_counts.txt", "w") do fout
+    @printf(fout, "%-8s %6s\n", "#Sample", "snp")
+
+    for i in 1:length(x)
+        @printf(fout, "%-8s %6s\n", x[i], y[i])
+    end
+
+    @printf(fout, "%-8s %6s\n", "#Sum", sum(y))
+end

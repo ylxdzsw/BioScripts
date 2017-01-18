@@ -1,0 +1,36 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+Samples, Genes = Set{ASCIIString}(), Set{ASCIIString}()
+S = Dict{Tuple{ASCIIString, ASCIIString}, Int}() # sample, gene -> counts
+
+@showprogress 1 "counting..." for i in readdir(sam_dir)
+    push!(Samples, i)
+
+    for line in open(readlines, "$sam_dir/$i/$(i)_cfdna_snv_annovar_Somatic_filtered_MrBam.txt")
+        startswith(line, '#') && return
+
+        g = split(split(line, '\t')[10], ':')[1]
+        push!(Genes, g)
+        S[(i, g)] = get(S, (i, g), 0) + 1
+    end
+end
+
+Samples, Genes = sort!([Samples...]), sort!([Genes...])
+
+open("$sta_dir/possible_markers_by_gene.txt", "w") do fout
+    println(fout, "\t", join(Samples, '\t'))
+
+    @showprogress 1 "transforming..." for gene in Genes
+        print(fout, gene)
+
+        for sample in Samples
+            print(fout, '\t', get(S, (sample, gene), 0))
+        end
+
+        println(fout)
+    end
+end

@@ -1,0 +1,65 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using PyPlot
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+const STATUS = (:Reference, :Germline, :Somatic, :LOH, :Unknown)
+const S = Vector{Tuple{ASCIIString, Symbol, Int, Int, Int, Int, Int}}() # id, type, counts by status
+
+function get_status(x)
+    startswith(x, '#') && return 0
+    s = match(r"SS=(\d);", x)
+    s == nothing && error("SS attr not found in \n", x)
+
+    s[1] == "0" ? 1 :
+    s[1] == "1" ? 2 :
+    s[1] == "2" ? 3 :
+    s[1] == "3" ? 4 :
+    s[1] == "5" ? 5 :
+    error("Uknown SS value")
+end
+
+@showprogress 1 "classifing..." for i in readdir(sam_dir), t in (:snv, :indel)
+    fout   = [open("$sam_dir/$i/$(i)_cfdna_$(t)_annovar_$x.txt", "w") for x in STATUS]
+    counts = [0 for x in STATUS]
+
+    @inbounds try
+        for line in open(readlines, "$sam_dir/$i/$(i)_cfdna_$(t)_annovar.txt")[2:end]
+            status = get_status(line)
+            status == 0 && continue
+
+            counts[status] += 1
+            fout[status] << line
+        end
+    catch e
+        println(STDERR, e)
+    end
+
+    map(close, fout)
+    push!(S, (i, t, counts...))
+end
+
+open("$sta_dir/variant_status_counts.txt", "w") do fout
+    @printf(fout, "%-8s %-5s %9s %9s %9s %9s %9s\n", "#Name", "Type", STATUS...)
+
+    for s in S
+        @printf(fout, "%-8s %-5s %9d %9d %9d %9d %9d\n", s...)
+    end
+
+    for t in (:snv, :indel)
+        s = map(x->x[3:end], filter(x->cadr(x)==t, S))
+        s = map(sum, zip(s...))
+        @printf(fout, "%-8s %-5s %9d %9d %9d %9d %9d\n", "#Sum", t, s...)
+    end
+end
+
+@showprogress 1 "ploting..." for s in S
+    figure(figsize=(8, 6), dpi=120)
+    pie(s[4:end], colors=["yellowgreen", "lightcoral", "lightskyblue", "gold"],
+        labels=cdr(STATUS), autopct="%1.1f%%", shadow=false)
+    title("$(s[1]) $(s[2])")
+    savefig("$sam_dir/$(s[1])/$(s[1])_$(s[2])_status_distribution.png")
+    clf()
+end

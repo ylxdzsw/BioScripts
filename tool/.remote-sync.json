@@ -1,0 +1,16 @@
+{
+  "transport": "scp",
+  "uploadOnSave": false,
+  "useAtomicWrites": false,
+  "deleteLocal": false,
+  "hostname": "x02",
+  "port": "22",
+  "target": "/haplox/users/huanghuiqiang/project/tenThousantProject/breastProject_20160812/tool",
+  "ignore": [
+    ".remote-sync.json",
+    ".git/**"
+  ],
+  "username": "huanghq",
+  "keyfile": "C:\\Users\\ylxdzsw\\.ssh\\id_rsa",
+  "watch": []
+}

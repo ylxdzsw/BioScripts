@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+START=$(date +%s)
+"$@"
+STATUS=$?
+END=$(date +%s)
+MSG="$(hostname): \`$*\` finished in $((END-START))s with status $STATUS"
+curl -X POST -d "{\"email\":\"$(whoami)@haplox.com\", \"message\":\"$MSG\"}" http://192.168.1.10:8080/send || :

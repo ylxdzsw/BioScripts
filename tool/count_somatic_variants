@@ -1,0 +1,40 @@
+#!/usr/bin/env julia
+using PyPlot
+using OhMyJulia
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+x, y1, y2 = ASCIIString[], Int[], Int[]
+
+@showprogress 1 "counting..." for i in readdir(sam_dir)
+    try
+        indel = open(readlines, "$sam_dir/$i/$(i)_cfdna_indel_annovar_Somatic_filtered.txt")
+        snv   = open(readlines, "$sam_dir/$i/$(i)_cfdna_snv_annovar_Somatic_filtered_MrBam.txt")
+        push!(x, i)
+        push!(y1, count(x->!startswith(x, '#'), indel))
+        push!(y2, count(x->!startswith(x, '#'), snv))
+    catch e
+        println(STDERR, e)
+    end
+end
+
+p = sortperm(collect(1:length(x)), by=i->-y1[i]-y2[i])
+
+figure(figsize=(21, 9), dpi=120)
+p1 = bar(collect(1:length(x)), y1[p], color="m", bottom=y2[p], align="center")
+p2 = bar(collect(1:length(x)), y2[p], color="y", align="center")
+xticks(collect(1:length(x)), x[p], rotation=90)
+legend((p1[1], p2[1]), ("Indel", "SNP"))
+savefig("$sta_dir/somatic_variant_counts.png")
+clf()
+
+open("$sta_dir/somatic_variant_counts.txt", "w") do fout
+    @printf(fout, "%-8s %6s %6s\n", "#Sample", "indel", "snp")
+
+    for i in 1:length(x)
+        @printf(fout, "%-8s %6s %6s\n", x[i], y1[i], y2[i])
+    end
+
+    @printf(fout, "%-8s %6s %6s\n", "#Sum", sum(y1), sum(y2))
+end

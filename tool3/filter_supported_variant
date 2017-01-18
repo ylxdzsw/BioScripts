@@ -1,0 +1,55 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+rules = [
+    # x -> x[9] ∉ (".", "synonymous SNV"),
+    x -> +(map(parse, split(split(x[end], ':')[end], ',')[[7,8,10]])...) >= 5,
+    x -> parse(Float64, split(x[end], ':')[7][1:end-1]) >= .5
+]
+
+first_unmet_rule(x) = try
+    findfirst(r->!r(x), rules)
+catch
+    println(x)
+    -1
+end
+
+S = Vector{Tuple{ASCIIString, Int, Int}}() # file, filtered, output
+
+flog = open("$sta_dir/filter_log.txt", "w")
+
+@showprogress 1 "filtering..." for i in readdir(sam_dir), s in (:indel,:snp)
+    lines = open(readlines, "$sam_dir/$i/$(i)_cfdna_$(s)_annovar_MrBam.txt")[2:end]
+
+    Sfiltered, Soutput = 0, 0
+
+    open("$sam_dir/$i/$(i)_cfdna_$(s)_annovar_filtered.txt", "w") do fout
+        for line in lines
+            unmet = first_unmet_rule(split(line, '\t'))
+            if unmet == 0
+                Soutput += 1
+                fout << line
+            else
+                Sfiltered += 1
+                flog << unmet << '\t' << line
+            end
+        end
+
+        push!(S, (i, Sfiltered, Soutput))
+    end
+end
+
+open("$sta_dir/filter_statistics.txt", "w") do fout
+    @printf(fout, "%-6s %8s %8s %8s\n", "#Sam", "filtered", "output", "ratio")
+
+    for s in S
+        @printf(fout, "%-6s %8s %8s %.2f%%\n", s..., (s[2]*100) / (s[2]+s[3]))
+    end
+
+    allfiltered = sum(map(cadr, S))
+    alloutput = sum(map(x->x[3], S))
+    @printf(fout, "%-6s %8s %8s %.2f%%\n", "#Sum", allfiltered, alloutput, (allfiltered*100) / (allfiltered+alloutput))
+end

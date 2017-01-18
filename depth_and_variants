@@ -1,0 +1,40 @@
+#!/usr/bin/env julia
+using PlotlyJS
+
+d = open(readlines, "depth_distribution/medians_cfdna.txt")
+m = open(readlines, "mutation_counts/mutation_counts.txt")
+
+d = filter(x->!startswith(x, '#'), d)
+m = filter(x->!startswith(x, '#'), m)
+
+d = map(split, d)
+m = map(split, m)
+
+@assert map(x->x[1], d) == map(x->x[1], m)
+
+sample = map(x->x[1], d)
+depth  = map(x->parse(Int, x[2]), d)
+indel  = map(x->parse(Int, x[2]), m)
+snp    = map(x->parse(Int, x[3]), m)
+
+p = sortperm(collect(1:length(sample)), by=i->-depth[i])
+
+sample = sample[p]
+depth  = depth[p]
+indel  = indel[p]
+snp    = snp[p]
+
+cor(depth, indel)
+cor(depth, snp)
+cor(depth, indel+snp)
+cor(indel, snp)
+
+reg(x) = (x - mean(x)) ./ std(x)
+
+pindel = scatter(;x=sample, y=reg(indel), mode="markers", name="indel")
+psnp   = scatter(;x=sample, y=reg(snp),   mode="markers", name="snp")
+pdepth = scatter(;x=sample, y=reg(depth), mode="markers", name="depth")
+
+p = plot([pindel, psnp, pdepth])
+
+savefig(p, "output.html")

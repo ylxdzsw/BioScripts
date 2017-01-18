@@ -1,0 +1,28 @@
+#!/usr/bin/env julia
+using OhMyJulia
+
+sam_dir, MrBam_dir = rel"../processed", rel"../MrBam"
+
+if length(ARGS) != 1
+    print(s"""
+
+        Usage: annotate_by_MrBam <process_num>
+
+        Set process_num to 0 means no limit
+
+        Example:
+            $ ./tools/extract_restuls 32
+
+        """)
+    exit(0)
+end
+
+cond, n = Condition(), parse(Int, ARGS[1])
+
+@sync for i in readdir(sam_dir)
+    @async begin
+        run(setenv(`python3 -m MrBam.main $sam_dir/$i/$(i)_cfdna_indel_annovar_Somatic.txt -c $(rel"../result")/$i/$(i)_cfdna_rg.bam`, dir=MrBam_dir))
+        notify(cond)
+    end
+    n == 1 ? wait(cond) : (n -= 1)
+end

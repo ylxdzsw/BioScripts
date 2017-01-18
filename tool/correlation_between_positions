@@ -1,0 +1,57 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+using HypothesisTests
+
+sta_dir, sam_dir = rel"../statistic", rel"../processed"
+
+a = open(readlines, "$sta_dir/possible_markers_by_pos.txt")
+
+samples = a |> car |> split |> cdr
+
+a = map(split, cdr(a))
+
+a = map(x->(car(x), map(y->y=="-1.0"?0:1, cdr(x))), a)
+
+a = filter(x->sum(cadr(x))>10, a)
+
+v = filter(1:length(samples)) do i
+    true # sum(map(x->cadr(x)[i], a)) > 400
+end
+
+samples = samples[v]
+
+a = map(x->(car(x), cadr(x)[v]), a)
+
+a = filter(x->sum(cadr(x))>10, a) # re-filter after filtered samples
+
+A = Array{Float64}(length(a), length(a))
+
+means = map(mean, cadr, a)
+genes = map(car, a)
+
+@showprogress 1 "caculating correlation..." for i in 1:length(a), j in 1:length(a)
+    A[i,j] = i > j ? Base.corm(cadr(a[i]), means[i], cadr(a[j]), means[j]) : 0.
+end
+
+c = map(cadr, a) do x
+    sum(x), length(x) - sum(x)
+end
+
+open("$sta_dir/correlation_between_positions.txt", "w") do fout
+    @showprogress 1 "performing fisher exact test..." for i in 1:length(a), j in 1:i-1
+        if A[i,j] > .65
+            p = FisherExactTest(car(c[i]), cadr(c[i]), car(c[j]), cadr(c[j])) |> pvalue
+            if p > .85
+                l, r = BitVector(cadr(a[i])), BitVector(cadr(a[j]))
+                b = l & r
+                l = join(map(x->x[4:end], samples[l $ b]), ',')
+                r = join(map(x->x[4:end], samples[r $ b]), ',')
+                b = join(map(x->x[4:end], samples[b]), ',')
+                print(fout, genes[i], '\t', genes[j], '\t', A[i,j], '\t')
+                @printf(fout, "%.12f\t", p)
+                println(fout, l, '\t', b, '\t', r)
+            end
+        end
+    end
+end

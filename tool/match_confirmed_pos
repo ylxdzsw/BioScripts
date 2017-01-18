@@ -1,0 +1,62 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+
+if length(ARGS) != 1
+    print(s"""
+
+        Usage: match_confirmed_pos <source_file>
+
+        Example:
+            $ ./tools/match_confirmed_pos ./source_file/know
+
+        """)
+    exit(0)
+end
+
+source_file, sta_dir, sam_dir = car(ARGS), rel"../statistic", rel"../processed"
+
+S = Dict{ASCIIString, Tuple{ASCIIString, Vector{ASCIIString}}}()
+
+for i in eachline(source_file)
+    pos = split(i, '\t')[5]
+    isempty(pos) && continue
+    ==(split(split(pos, ':')[2], '-')...) || continue
+    S[split(pos, '-')[1]] = chomp(i), []
+end
+
+@showprogress 1 "matching..." for i in readdir(sam_dir)
+    for line in eachline("$sam_dir/$i/$(i)_cfdna_snv_annovar_Somatic_filtered_MrBam.txt")
+        chr, pos, info = split(line, '\t')[[1, 2, end]]
+        info = (i, split(info, ':')[[5,6]]...)
+
+        p = "$(chr[4:end]):$pos"
+        if p in keys(S)
+            push!(cadr(S[p]), join(info, ':'))
+        end
+    end
+end
+
+open("$sta_dir/confirmed_pos.txt", "w") do fout
+    for i in values(S)
+        print(fout, car(i), '\t')
+        println(fout, join(cadr(i), '\t'))
+    end
+end
+
+open("$sta_dir/confirmed_pos_aligned.txt", "w") do fout
+    @printf(fout, "%-22s %-12s %-20s\n", "#Gene", "Chr:Pos", "Source")
+
+    for (k,v) in S
+        isempty(cadr(v)) && continue
+
+        gene, source = split(car(v), '\t')[[1, end]]
+        @printf(fout, "%-22s %-12s %-20s...", gene, k, source[1:20])
+
+        for i in cadr(v)
+            @printf(fout, " %-16s", i)
+        end
+
+        println(fout)
+    end
+end

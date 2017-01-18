@@ -1,0 +1,15 @@
+# get a read with deletion
+.((filter λ((any λ((== 2 (& . 0x0f))) ..cigar)) bam)
+  (take . 1)
+  *collect
+  ref(. 1))
+
+# print some reads starting with softcliping
+.((filter λ(&((! (isempty ..cigar))
+             (== 4 (& ref(..cigar 1) 0x0f))))
+         bam)
+ (take . 10)
+ ∀(.
+   ***show
+   (println)))
+

@@ -1,0 +1,87 @@
+#!/usr/bin/env julia
+using OhMyJulia
+using ProgressMeter
+using HypothesisTests
+using ArgParse
+
+const o = let
+    s = ArgParseSettings()
+
+    @add_arg_table s begin
+        "--case", "-c"
+            help = "case sample file, vcf-like"
+            nargs = '+'
+        "--normal", "-n"
+            help = "non-case sample file, vcf-like"
+            nargs = '+'
+        "--keep", "-k"
+            help = "infomations col inedx to keep, usally gene annotations"
+            nargs = '*'
+            arg_type = Int
+        "--output", "-o"
+            help = "output file name"
+            default = "fisher_exact_test_result.txt"
+        "--drill", "-d"
+            help = "drill file name"
+            default = "fisher_exact_test_drill.txt"
+    end
+
+    parse_args(s) |> to_module
+end
+
+S = Dict{Tuple{ASCIIString, ASCIIString}, Vector{Tuple{ASCIIString, Bool}}}() # chr, pos -> [name, is_case]
+
+geneinfo = Dict{Tuple{ASCIIString, ASCIIString}, ASCIIString}() # chr, pos -> geneinfo
+
+@showprogress 1 "counting..." for t in (:case, :normal), f in getfield(o, t)
+    for line in eachline(f)
+        chr, pos = split(line, '\t')[1:2]
+
+        if (chr, pos) in keys(S)
+            push!(S[(chr, pos)], (f, t==:case))
+        else
+            S[(chr, pos)] = [(f, t==:case)]
+            geneinfo[(chr, pos)] = join(split(line[1:end-1], '\t')[o.keep], '\t')
+        end
+    end
+end
+
+open(o.drill, "w") do fout
+    for (k, v) in S
+        @printf(fout, "%-5s %-10s", k...)
+
+        for i in map(car, v)
+            print(fout, '\t', i)
+        end
+
+        println(fout)
+    end
+end
+
+open(o.output, "w") do fout
+    println(fout, "#Chr Position Case Normal pvalue Geneinfo")
+
+    SS = Vector{Tuple{ASCIIString, ASCIIString, Float64, Float64, Float64}}()
+
+    Ncase, Nnormal = length(o.case), length(o.normal)
+
+    @showprogress 1 "caculate pvalue..." for (k, v) in S
+        case = normal = 0
+
+        for i in v
+            if cadr(i)
+                case += 1
+            else
+                normal += 1
+            end
+        end
+
+        p = FisherExactTest(case, normal, Ncase - case, Nnormal - normal) |> pvalue
+
+        push!(SS, (k..., case / Ncase , normal / Nnormal, p/2))
+    end
+
+    for i in sort(SS, by=x->x[5])
+        @printf(fout, "%-5s %10s %.4f %.4f %.12f %s\n", i..., geneinfo[(i[1], i[2])])
+    end
+end
