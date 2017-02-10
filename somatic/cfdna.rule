@@ -1,0 +1,9 @@
+@rule "cfdna" byread hard
+
+@filt (edit_distance) -> edit_distance < 5
+
+@rule "cfdna" bymut hard
+
+@filt (raw_ref_depth, raw_alt_depth) -> raw_ref_depth + raw_alt_depth > 10
+@filt (unique_ref, unique_alt) -> unique_ref + unique_alt > 10
+@filt unique_alt -> unique_alt > 2

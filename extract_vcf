@@ -3,7 +3,7 @@ using OhMyJulia
 
 if length(ARGS) <= 1
     println("""\n
-        Usage: 
+        Usage:
             extract_vcf output_dir vcf
 
         Example (run in parallel with xargs):
@@ -52,7 +52,7 @@ for line in drop(eachline(file), 1)
             if length(candidates[i]) == 5
                 gene, transcript, region, nucleotide, protein = candidates[i]
             elseif length(candidates[i]) == 3
-                gene, transcript, region = candidates[i]    
+                gene, transcript, region = candidates[i]
             else
                 println(STDERR, file)
                 println(STDERR, line[10])
@@ -90,7 +90,7 @@ for line in drop(eachline(file), 1)
 
     @assert length(line) == (is_pair ? 63 : 62)
 
-    tumor = split(line[end], ':')
+    tumor = split(line[end][1:end-1], ':')
 
     kgenome_af = line[14] == null ? "0" : line[14]
 
@@ -112,22 +112,27 @@ for line in drop(eachline(file), 1)
         tumor_af, tumor_altread   = string(tumor[6][1:end-1], "E-2"), tumor[5]
         normal_af, normal_altread = string(normal[6][1:end-1], "E-2"), normal[5]
 
+        ref_forward_strand, ref_reverse_strand, alt_forward_strand, alt_reverse_strand = split(tumor[end-1], ',')
+
         ssc, gpv, spv = match(r"SSC=(.*);GPV=(.*);SPV=(.*)", line[60]).captures
         abq, rbq = "-1", "-1"
     else
         tumor_depth = tumor[4]
         tumor_af, tumor_altread = string(tumor[7][1:end-1], "E-2"), tumor[6]
+        ref_forward_strand, ref_reverse_strand, alt_forward_strand, alt_reverse_strand = tumor[end-4:end-1]
         gpv, rbq, abq = tumor[[8,9,10]]
         spv, ssc, normal_af, normal_altread = ntuple(x->"-1", 4)
     end
-    
+
     prt(f, sid, did, mut, sequencing_strategy, chr, position, ref, alt,
         dbsnp, gene, transcript, func, region, nucleotide, protein,
         sift, clinvar, cosmic_id, cosmic_occu, kgenome_af, tumor_af, tumor_altread,
-        multiple_overlap_ref, multiple_nonoverlap_ref, multiple_single_ref, 
+        multiple_overlap_ref, multiple_nonoverlap_ref, multiple_single_ref,
         one_overlap_ref, one_nonoverlap_ref, one_single_ref,
-        multiple_overlap_alt, multiple_nonoverlap_alt, multiple_single_alt, 
+        multiple_overlap_alt, multiple_nonoverlap_alt, multiple_single_alt,
         one_overlap_alt, one_nonoverlap_alt, one_single_alt,
         unique_total, unique_alt, unique_af, tumor_depth,
+        ref_forward_strand, ref_reverse_strand, alt_forward_strand, alt_reverse_strand,
         gpv, spv, ssc, normal_af, normal_altread, rbq, abq)
 end
+

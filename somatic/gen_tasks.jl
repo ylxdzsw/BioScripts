@@ -35,11 +35,14 @@ for sample in samples
     id = basename(sample)
     for t in ("gDNA", "cfDNA")
         open("$id.$t.sh", "w") do f
-            println(f, "gzip -cd $sampledir/$sample.$t.dedup.bam | julia ../falcon/falcon -v $id.$t.vcf ../falcon/rules/*")
+            println(f, "gzip -cd $sampledir/$sample.$t.dedup.bam | julia ../falcon/falcon -v $id.$t.vcf ../falcon/rules/* $(lowercase(t)).rule")
         end
     end
     open("$id.cover.sh", "w") do f
         println(f, "gzip -cd $sampledir/$sample.gDNA.dedup.bam | julia cover_region 10 > $id.gDNA.bed")
+    end
+    open("$id.data.sh", "w") do f
+        println(f, "julia collect_data $id.gDNA.vcf $id.cfDNA.vcf $id.gDNA.bed > $id.data.tsv")
     end
 end
 

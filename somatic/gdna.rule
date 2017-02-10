@@ -1,0 +1,9 @@
+@rule "gdna" byread hard
+
+@filt (edit_distance) -> edit_distance < 5
+
+@rule "gdna" bymut hard
+
+@filt P98 -> parse(Float64, P98[1:end-1]) > 10.
+
+@filt (raw_ref_depth, raw_alt_depth) -> raw_ref_depth + raw_alt_depth > 10
