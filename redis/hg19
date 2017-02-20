@@ -1,0 +1,34 @@
+#!/usr/bin/env julia
+
+using ArgParse
+using OhMyJulia
+using RedisAlchemy
+
+const o = let
+    s = ArgParseSettings()
+
+    @add_arg_table s begin
+        "file"
+            help = "hg19.fa file"
+        "--db", "-d"
+            help = "Redis db number, can be 0-15"
+            arg_type = Int
+            default = 0
+    end
+
+    parse_args(s) |> to_module
+end
+
+const conn = RedisConnection(db=o.db)
+
+let db
+    for line in eachline(o.file)
+        if car(line) == '>'
+            chr = line[2:end-1]
+            db = RedisBlob(conn, "ref_$chr")
+            println("importing $chr")
+        else
+            db += uppercase(line)
+        end
+    end
+end

@@ -2,7 +2,7 @@
 
 using OhMyJulia
 
-const table = car(ARGS) ~ eachline ~ map(chomp) ~ map(x->split(x, ',')) ~ groupby(x->x[4], push!, ()->[])
+const table = car(ARGS) ~ eachline ~ map(chomp) ~ map(x->split(x, '\t')) ~ groupby(x->x[6], push!, ()->[])
 const found = Set{String}()
 
 for file in cdr(ARGS)
@@ -10,12 +10,12 @@ for file in cdr(ARGS)
     sam_id,  = match(r".*/(.*?)_cfDNA.sh$", file).captures
     line     = open(readlines, file)[2]
     r1, r2   = match(r" -1 (.*?) -2 (.*?) ", line).captures ~ map(String)
-    
+
     if length(r1) != length(r2)
         STDERR << "R1 R2 not match:\n" << r1 << '\n' << r2 << '\n' << "in file: " << file << "\n\n"
         continue
     end
-    
+
     mismatch = r1.data .!= r2.data
 
     if sum(mismatch) != 1 || car(r1.data[mismatch]) != Byte('1') || car(r2.data[mismatch]) != Byte('2')
@@ -31,7 +31,7 @@ for file in cdr(ARGS)
     candidates = table[sam_id]
 
     i = findfirst(candidates) do c
-        contains(r1, c[2]) && contains(r1, c[3])
+        contains(r1, c[2]) && contains(r1, join(split(c[3], '_')[1:2], '_'))
     end
 
     if i == 0

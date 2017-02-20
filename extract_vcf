@@ -41,7 +41,11 @@ for line in drop(eachline(file), 1)
 
     gene = line[7] ~ :split(r"[,;]") ~ car
 
-    func = match(r"ncRNA|exonic|intronic|splicing|UTR3|UTR5|upstream|downstream|intergenic", line[6]).match
+    func = try
+        match(r"ncRNA|exonic|intronic|splicing|UTR3|UTR5|upstream|downstream|intergenic", line[6]).match
+    catch
+        "unknown"
+    end
 
     transcript, region, nucleotide, protein = ntuple(x->null, 4)
 
