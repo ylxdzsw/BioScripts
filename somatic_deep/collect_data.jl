@@ -15,49 +15,57 @@ include("/home/zhangsw/falcon/pileup.jl")
 
 const fbam, fpileup, fout = ARGS
 
-function filter_pileup_seq(x)
-    i, buf = 1, IOBuffer()
+function most_significant_mut_count(seq)
+    i, counter = 1, fill(0, 6) # ATCGID
 
-    while i < length(x)
-        c = uppercase(x[i])
+    while i < length(seq)
+        c = uppercase(seq[i])
 
-        if c in "ATCG"
-            buf << c
+        m = findfirst("ATCG+-", c)
+
+        if m > 4
+            counter[m] += 1
+            len, i = parse(seq, i+1, greedy=false)
+            i += len
+        elseif m > 0
+            counter[m] += 1
             i += 1
         elseif c == '^'
             i += 2
-        elseif c == '+' || c == '-'
-            buf << c
-            len, i = parse(x, i+1, greedy=false)
-            i += len
-        else # '.' or ',' or '$' or 'N'
+        else
             i += 1
         end
     end
 
-    takebuf_array(buf)
+    maximum(counter)
 end
 
 const bam = Bam(open(fbam))
 const ref = h5open("/haplox/users/zhangsw/hg19.h5")
 const out = h5open(fout, "w")
 STDERR << now() << " - gdna started" << '\n' << flush
-const gdna = @with Dict{String, Tuple{Int, Bytes}}() do x
+const gdna = @with Dict{String, f32}() do x
     for line in eachline(fpileup)
         line = split(line)
         depth = parse(Int, line[4])
-        if depth > 50
-            x[line[1] * line[2]] = depth, filter_pileup_seq(line[5])
+
+        if depth > 80
+            freq = most_significant_mut_count(line[5]) / depth
+
+            if freq < .002
+                x[string(line[1], ':', line[2])] = 0.
+            elseif freq > .35
+                x[string(line[1], ':', line[2])] = 1.
+            end
         end
     end
 end
-STDERR << now() << " - gdna finished" << '\n' << flush
 baseid(x) = x == Byte('A') ? 1 : x == Byte('T') ? 2 : x == Byte('C') ? 3 : x == Byte('G') ? 4 : 0
 
 #= NOTE: both falcon and mpileup using 1-based indexing =#
 
 current_chr, current_ref, current_pos = -2, Bytes(), -2
-bufx, bufy = Array{f32}(16, 64, 256, 8), Vector{f32}(16)
+bufx, bufy = Array{f32}(64, 256, 64, 8), Vector{f32}(64)
 buf_idx, buf_batch = 1, 1
 
 for (reads, chr, mut) in @task pileup(bam)
@@ -65,37 +73,25 @@ for (reads, chr, mut) in @task pileup(bam)
         STDERR << now() << " - $chr started" << '\n' << flush
         current_chr = chr
         current_ref = read(ref, car(bam.refs[chr+1]))
-    elseif mut.pos == current_pos
-        continue
     end
 
-    current_pos = mut.pos
+    pos = isa(mut, Insertion) ? mut.pos-1 : mut.pos
 
-    pos, base = if isa(mut, SNP)
-        mut.pos, mut.alt
-    elseif isa(mut, Insertion)
-        mut.pos-1, Byte('+')
-    elseif isa(mut, Deletion)
-        mut.pos, Byte('-')
-    end
+    pos == current_pos && continue
+
+    current_pos = pos
 
     label = let
-        key = car(bam.refs[chr+1])*string(mut.pos)
-        key in keys(gdna) || continue
-
-        depth, seq = gdna[key]
-        freq = count(x->x==base, seq) / depth
-        if freq < .001
-            0.
-        elseif freq > .35
-            1.
+        key = string(car(bam.refs[chr+1]), ':', mut.pos)
+        if key in keys(gdna)
+            gdna[key]
         else
             continue
         end
     end
 
     reads = collect(reads)
-    if length(reads) < 50
+    if length(reads) < 80
         continue
     elseif length(reads) > 256
         reads = sample(reads, 256, replace=false, ordered=true)
@@ -176,7 +172,7 @@ for (reads, chr, mut) in @task pileup(bam)
     bufx[buf_idx, :] = image
     bufy[buf_idx]    = label
 
-    if buf_idx == 16
+    if buf_idx == 64
         out[string('x', buf_batch), "compress", 8] = bufx
         out[string('y', buf_batch), "compress", 8] = bufy
         buf_idx = 1

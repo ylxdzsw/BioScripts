@@ -139,4 +139,3 @@ for line in drop(eachline(file), 1)
         ref_forward_strand, ref_reverse_strand, alt_forward_strand, alt_reverse_strand,
         gpv, spv, ssc, normal_af, normal_altread, rbq, abq)
 end
-
