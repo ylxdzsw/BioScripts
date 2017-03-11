@@ -2,8 +2,9 @@
 
 using OhMyJulia
 using Insane
-using HDF5
 using StatsBase
+using HDF5
+using BinBlocks
 import Base: start, next, done, iteratorsize, eltype,
              getindex, setindex!, show, ==, hash, write
 
@@ -42,7 +43,7 @@ end
 
 const bam = Bam(open(fbam))
 const ref = h5open("/haplox/users/zhangsw/hg19.h5")
-const out = h5open(fout, "w")
+const out = BinBlock(fout, "w")
 STDERR << now() << " - gdna started" << '\n' << flush
 const gdna = @with Dict{String, f32}() do x
     for line in eachline(fpileup)
@@ -52,9 +53,9 @@ const gdna = @with Dict{String, f32}() do x
         if depth > 80
             freq = most_significant_mut_count(line[5]) / depth
 
-            if freq < .002
+            if freq < .001 && rand() < .01
                 x[string(line[1], ':', line[2])] = 0.
-            elseif freq > .35
+            elseif freq > .24 || (depth > 200 && freq > .2)
                 x[string(line[1], ':', line[2])] = 1.
             end
         end
@@ -65,8 +66,6 @@ baseid(x) = x == Byte('A') ? 1 : x == Byte('T') ? 2 : x == Byte('C') ? 3 : x == 
 #= NOTE: both falcon and mpileup using 1-based indexing =#
 
 current_chr, current_ref, current_pos = -2, Bytes(), -2
-bufx, bufy = Array{f32}(64, 256, 64, 8), Vector{f32}(64)
-buf_idx, buf_batch = 1, 1
 
 for (reads, chr, mut) in @task pileup(bam)
     if chr != current_chr
@@ -168,16 +167,5 @@ for (reads, chr, mut) in @task pileup(bam)
     end
 
     image[length(reads)+1:256, :, 8] = .5
-
-    bufx[buf_idx, :] = image
-    bufy[buf_idx]    = label
-
-    if buf_idx == 64
-        out[string('x', buf_batch), "compress", 8] = bufx
-        out[string('y', buf_batch), "compress", 8] = bufy
-        buf_idx = 1
-        buf_batch += 1
-    else
-        buf_idx += 1
-    end
+    write(out, image, label)
 end

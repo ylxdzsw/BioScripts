@@ -1,25 +1,56 @@
-include("../../NNBuilder/server/model/wrapper/Keras.jl")
-using OhMyJulia
-using HDF5
+include("Keras.jl")
 
-const X, y = h5open("data.hdf5", "r") do f
-    X = read(f, "X")
-    y = read(f, "y")
-    scale = maximum(abs(X), 1)
-    for j in 1:ncol(X), i in 1:nrow(X)
-        X[i, j] /= scale[j]
-    end
-    X, y
-end
+using BinBlocks
 
 const model = let
-    input = Keras.Input(shape=(40,))
-    fc1   = Keras.Dense(90, activation="sigmoid")(input)
-    fc2   = Keras.Dense(60, activation="sigmoid")(fc1)
-    fc3   = Keras.Dense(40, activation="sigmoid")(fc2)
-    fc4   = Keras.Dense(1, activation="sigmoid")(fc3)
-    Keras.Model(input=input, output=fc4)
+    input = Keras.Input(shape=(256, 64, 8))
+
+    output = input |>
+        Keras.Convolution2D(64, 5, 5, activation="relu", border_mode="same") |>
+        Keras.MaxPooling2D((2, 2), strides=(2, 2)) |>
+
+        Keras.Convolution2D(128, 3, 3, activation="relu", border_mode="same") |>
+        Keras.MaxPooling2D((2, 2), strides=(2, 2)) |>
+
+        Keras.Convolution2D(256, 3, 3, activation="relu", border_mode="same") |>
+        Keras.MaxPooling2D((4, 1), strides=(4, 1)) |>
+
+        Keras.Convolution2D(256, 3, 3, activation="relu", border_mode="same") |>
+        Keras.Convolution2D(256, 3, 3, activation="relu", border_mode="same") |>
+        Keras.MaxPooling2D((2, 2), strides=(2, 2)) |>
+
+        Keras.Flatten() |>
+        Keras.Dense(1024, activation="sigmoid") |>
+        Keras.Dense(1, activation="sigmoid")
+
+    Keras.Model(input=input, output=output)
 end
 
-model[:compile](optimizer="SGD", loss="binary_crossentropy", metrics=["accuracy"])
-model[:fit](X, y, nb_epoch=20, batch_size=256, validation_split=.3)
+const X, y = let
+    data = []
+    for sample in readdir(".") |> filter(x->endswith(x, ".binblock")) |> map(BinBlock)
+        while true
+            try
+                push!(data, read(sample, 1024))
+            catch e
+                isa(e, EOFError) ? break : rethrow(e)
+            end
+        end
+    end
+    [map(car, data)...;], [map(cadr, data)...;]
+end
+
+const callbacks = [Keras.ModelCheckpoint("weights.{epoch:02d}-{val_acc:.4f}.h5", monitor="val_acc", save_weights_only=true)]
+
+const phase_one = readdir(".") |> filter(x->startswith(x, "weights.14"))
+
+if !isempty(phase_one)
+    model[:compile](Keras.SGD(lr=.0005, momentum=.95), "binary_crossentropy", metrics=["accuracy"])
+    model[:load_weights](phase_one[])
+    model[:fit](X, y, batch_size=256, nb_epoch=20, validation_split=0.01, callbacks=callbacks, initial_epoch=15)
+else
+    model[:compile](Keras.SGD(lr=.002, momentum=.9), "binary_crossentropy", metrics=["accuracy"])
+    model[:fit](X, y, batch_size=256, nb_epoch=15, validation_split=0.01, callbacks=callbacks)
+end
+
+

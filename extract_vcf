@@ -109,6 +109,8 @@ for line in drop(eachline(file), 1)
     unique_total = unique_ref + unique_alt
     unique_af    = unique_alt / unique_total
 
+    unique_alt < 2 && continue
+
     if is_pair
         normal = split(line[end-1], ':')
 

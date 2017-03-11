@@ -1,6 +1,7 @@
 #!/usr/bin/env julia
 using OhMyJulia
 using DataFrames
+using StatsBase
 using PyCall
 
 @pyimport sklearn.ensemble as skensemble
@@ -18,11 +19,11 @@ const models = (
 
 const data = readtable(car(ARGS))
 
-const cmr_features = filter(names(data)) do name 
+const cmr_features = filter(names(data)) do name
     endswith(string(name), "cmr")
 end
 
-const num_features = filter(names(data)) do name 
+const num_features = filter(names(data)) do name
     endswith(string(name), "mutpos")
 end
 
@@ -35,10 +36,16 @@ function dummy!(data, var, featlist, f=identity)
     delete!(data, var)
 end
 
+function bootstrap_sampling(len::Integer)
+    @with fill(false, len) do p
+        p[sample(1:len, round(Int, .9len), replace=false)] = true
+    end
+end
+
 const other_features = [:tumor_size, :age]
 
 dummy!(data, :gender, other_features, strip)
-dummy!(data, :smoke, other_features)
+# dummy!(data, :smoke, other_features)
 
 for feat in other_features
     nas = isna(data[feat])
@@ -65,36 +72,64 @@ for (package, modelname, args) in models
         catch
             model[:coef_]
         end
-        top25 = sortperm(abs(importance[:]), rev=true)[1:25]
-        X = X[:, top25]
+        top15 = sortperm(abs(importance[:]), rev=true)[1:15]
+
+        # priori = findfirst(x->startswith(string(x), "TP53_nonsense"), feats)
+        # priori in top15 || push!(top15, priori)
+
+        X = X[:, top15]
 
         model = getfield(package, modelname)(;args...)
         model = model[:fit](X, y)
-        score_top25 = skmetric.accuracy_score(y, model[:predict](X))
+        score_top15 = skmetric.accuracy_score(y, model[:predict](X))
 
         accuracy = skcv.cross_val_score(model, X, y, cv=10, scoring="accuracy")
         roc_auc  = skcv.cross_val_score(model, X, y, cv=10, scoring="roc_auc")
 
-        cvoutlyzer = []
-        for (train, test) in skcv.KFold(size(X, 1), n_folds=10)
+        cvoutlyzer, specificity = [], f64[]
+        for (train, test) in skcv.KFold(size(X, 1), n_folds=7)
             train, test = train[:]+1, test[:]+1
             model = getfield(package, modelname)(;args...)
             model = model[:fit](X[train, :], y[train])
-            prediction = model[:predict](X[test, :])
+            prediction = model[:predict_proba](X[test, :])[:, 2]
+
             outlyzer = sign.((y[test] .- .5) .* (prediction .- .5)) .< 0
             append!(cvoutlyzer, data[test[outlyzer], :id])
+
+            true_positives = sum(y[test])
+            for i in sort(prediction)
+                if sum(y[test][prediction .> i]) <= .8true_positives
+                    s = if length(test) > true_positives
+                        count(x->x==0, y[test][prediction .<= i]) / (length(test) - true_positives)
+                    else
+                        1
+                    end
+                    push!(specificity, s)
+                    break
+                end
+            end
+        end
+
+        boot_accuracy = map(1:1000) do _
+            train = bootstrap_sampling(length(y))
+            test = !train
+            model = getfield(package, modelname)(;args...)
+            model = model[:fit](X[train, :], y[train])
+            model[:score](X[test, :], y[test])
         end
 
         println("""
         Model: $modelname$(show_args(args))
         Features:
-        $(join(map(i->"  $(feats[i]): $(importance[i])", top25), '\n'))
+        $(join(map(i->"  $(feats[i]): $(importance[i])", top15), '\n'))
         Training Set Outlyzers ID: $(any(outlyzers) ? join(data[outlyzers, :id], ", ") : "(None)")
         Training Set Accuracy(All Features): $(score_all)
-        Training Set Accuracy(Top25 Features): $(score_top25)
+        Training Set Accuracy(Top15 Features): $(score_top15)
         Cross-Validation Outlyzers ID: $(isempty(cvoutlyzer) ? "(None)" : join(cvoutlyzer, ", "))
         Cross-Validation Accuracy: $(mean(accuracy)) (+/- $(2std(accuracy)))
         Cross-Validation ROC-AUC: $(mean(roc_auc)) (+/- $(2std(roc_auc)))
+        Bootstrapping Accuracy: $(mean(boot_accuracy)) (+/- $(2std(boot_accuracy)))
+        Specificity when 80% Sensitivity: $(mean(specificity)) (+/- $(2std(specificity)))
         """)
     end
 end
