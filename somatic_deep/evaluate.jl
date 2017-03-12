@@ -186,7 +186,7 @@ end
 
     info("start evaluation")
 
-    batch, bufx, bufy = 1, Array{f64}(64, 256, 64, 8), Array{Tuple}(64)
+    i, bufx, bufy = 1, Array{f64}(64, 256, 64, 8), Array{Tuple}(64)
 
     for line in eachline(fvcf)
         chr, pos, ssc, geno, freq, uaf, udp = parse_vcf_line(line)
@@ -209,11 +209,22 @@ end
         if i == 64
             pred = model[:predict](bufx)
             for i in 1:64
-                prt(fout, bufy[i]..., pred[i])
+                prt(bufy[i]..., pred[i])
             end
             i = 1
         else
             i += 1
+        end
+    end
+
+    if i != 1 # remaining
+        i -= 1
+        bufx = bufx[1:i, :, :, :]
+        bufy = bufy[1:i]
+        pred = model[:predict](bufx, batch_size=1)
+
+        for i in 1:i
+            prt(bufy[i]..., pred[i])
         end
     end
 end
