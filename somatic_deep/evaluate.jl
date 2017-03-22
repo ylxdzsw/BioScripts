@@ -33,7 +33,7 @@ const model = let
     Keras.Model(input=input, output=output)
 end
 
-info(x) = STDERR << now() << ":\t" << x << '\n'
+info(x) = STDERR << now() << ":\t" << x << '\n' << flush
 
 baseid(x) = x == Byte('A') ? 1 : x == Byte('T') ? 2 : x == Byte('C') ? 3 : x == Byte('G') ? 4 : 0
 
