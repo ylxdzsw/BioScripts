@@ -236,17 +236,17 @@ end_loop16:
 
 void align(uint8_t* q, uint8_t* t, uint8_t* result, int n) {
     const int8_t mat[25] = {
-         1, -3, -3, -3, -9,
-        -3,  1, -3, -3, -9,
-        -3, -3,  1, -3, -9,
-        -3, -3, -3,  1, -9,
+         1, -7, -7, -7, -9,
+        -7,  1, -7, -7, -9,
+        -7, -7,  1, -7, -9,
+        -7, -7, -7,  1, -9,
         -9, -9, -9, -9, -9
     };
 
-    kswq_t *qry = ksw_qinit(1, 128, q, 5, mat);
+    kswq_t *qry = ksw_qinit(1, 256, q, 5, mat);
 
     for (int i = 0; i < n; i++)
-        result[i] = ksw_align(qry, 65536+64, t + i*65536, 5, 1, KSW_XBYTE | KSW_XSTOP | 100).score;
+        result[i] = ksw_align(qry, 65536+255, t + i*65536, 11, 2, KSW_XBYTE | KSW_XSTOP | 64).score;
 
     free(qry);
 }

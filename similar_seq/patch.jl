@@ -1,4 +1,4 @@
-const max_ccall_threads = 64
+const max_ccall_threads = 128
 const thread_notifiers = [Nullable{Condition}() for i in 1:max_ccall_threads]
 const threadcall_restrictor = Base.Semaphore(max_ccall_threads)
 
