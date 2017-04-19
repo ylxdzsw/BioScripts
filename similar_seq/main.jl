@@ -39,11 +39,17 @@ function block_to_origin(ind, anchors)
     error("fuck")
 end
 
+const base_code = b"ATCGN"
+
 function encode_base(b)::Byte
     b == Byte('A') ? 0x00 :
     b == Byte('T') ? 0x01 :
     b == Byte('C') ? 0x02 :
     b == Byte('G') ? 0x03 : 0x04
+end
+
+function decode_base(b)::Byte
+    base_code[b+1]
 end
 
 function load_data()
@@ -86,27 +92,6 @@ function parse_batch_line(line)
     bpos, forward, reverse
 end
 
-@main function split_bed(bed)
-    chr, anchors = load_data()
-    f, n, batch = open("batch_00.task", "w"), 1, 0
-    for line in eachline(bed)
-        chr, a, b = split(line, '\t')
-
-        for i in parse(Int, a)-63:64:parse(Int, b)+64
-            write(f, origin_to_block(chr, i, anchors))
-
-            if n == 2048
-                close(f)
-                batch += 1
-                n = 1
-                f = open(@sprintf("batch_%02d.task", batch), "w")
-            else
-                n += 1
-            end
-        end
-    end
-end
-
 @main function prepare_data()
     hg19 = h5read("/haplox/users/zhangsw/hg19.h5", "/")
     ref, anchors = [], []
@@ -122,6 +107,27 @@ end
     append!(ref, fill(0x04, pad))
     h5write("cache.h5", "ref", ref)
     h5write("cache.h5", "anchors", join(map(x->"$(x[1])\t$(x[2].start)\t$(x[2].stop)", anchors), '\n'))
+end
+
+@main function split_bed(bed)
+    chr, anchors = load_data()
+    f, n, batch = open("batch_00.task", "w"), 1, 0
+    for line in eachline(bed)
+        chr, a, b = split(line, '\t')
+
+        for i in parse(Int, a)-128:64:parse(Int, b)-63
+            write(f, origin_to_block(chr, i, anchors))
+
+            if n == 2048
+                close(f)
+                batch += 1
+                n = 1
+                f = open(@sprintf("batch_%02d.task", batch), "w")
+            else
+                n += 1
+            end
+        end
+    end
 end
 
 @main function detect_similarity()
@@ -163,19 +169,107 @@ end
 
     for line in eachline(batch)
         bpos, forward, reverse = parse_batch_line(line)
-        for (tp, tr, rev) in ((forward, ref, false), (reverse, ref_rv, true)), block in tp
-            q = view(ref, bpos:bpos+255)
-            t = view(ref, 65536(block-1)+1:65536block+255)
+        q = view(ref, bpos:bpos+255)
 
-            for (pq, pt, var) in dp_report(q, t, F, P)
-                gpq = qpos + pq - 1
-                gpt = rev ? length(ref) - 65536(block-1) + pt - 1 : 65536(block-1) + pt
+        for (tp, tr, rev) in ((forward, ref, false), (reverse, ref_rv, true)), block in tp
+            t = view(tr, 65536(block-1)+1:65536block+255)
+
+            dp_fill!(q, t, F, P)
+            for (pq, pt, var) in dp_report(q, t, F, P, 64, decode_base)
+                gpq = bpos + pq - 1
+                gpt = rev ? length(ref) - 65536(block-1) - pt + 1 : 65536(block-1) + pt
 
                 !rev && gpq == gpt && continue # source
 
-                println(join(block_to_origin(gpq, anchors), ':'), " ~ ",
-                        join(block_to_origin(gpt, anchors), ':'),
-                        rev ? " (reverse)\n" : "\n", var)
+                try
+                    println(join(block_to_origin(gpq, anchors), ':'), " ~ ",
+                            join(block_to_origin(gpt, anchors), ':'),
+                            rev ? " (reverse)\n" : "\n", var)
+                catch
+                    prt(STDERR, gpq, gpt, rev, var)
+                end
+            end
+        end
+    end
+
+    flush(STDOUT)
+end
+
+@main function fucking_region(bed, alignments...)
+    bed = let r = Dict{String, IntRangeSet{i64}}()
+        for (chr, ps, pe) in eachline(split, bed)
+            chr in keys(r) || (r[chr] = IntRangeSet{i64}())
+            push!(r[chr], parse(Int, ps)+1:parse(Int, pe))
+        end
+        r
+    end
+
+    dict = Dict("chr$x"=>IntRangeSet{i64}() for x in (1:22...,:X,:Y))
+    local cl, cr, pl, pr, rev, ll, lr
+    for file in alignments, (i, line) in enumerate(eachline(chomp, file))
+        if i % 5 == 1
+            rev = contains(line, "reverse")
+            left, _, right = split(line, ' ')
+            cl, pl = split(left, ":")
+            cr, pr = split(right, ":")
+            pl, pr = parse(Int, pl), parse(Int, pr)
+        elseif i % 5 == 2
+            ll = count(x->x!='-', line)
+        elseif i % 5 == 4
+            lr = count(x->x!='-', line)
+        elseif i % 5 == 0
+            (ll < 50 || lr < 50) && continue
+            push!(dict[cl], pl:pl+ll-1)
+            push!(dict[cr], rev ? (pl-ll+1:pl) : (pl:pl+ll-1))
+        end
+    end
+
+    for chr in intersect(keys(bed), keys(dict))
+        foreach(intersect(bed[chr], dict[chr])) do x
+            prt(chr, x.start-1, x.stop)
+        end
+    end
+
+    # for (k, v) in dict
+    #     foreach(v) do x
+    #         prt(k, x.start-1, x.stop)
+    #     end
+    # end
+end
+
+@main function find_variants(alignments...)
+    local chr, pos, q, a ,t
+    for file in alignments, (i, line) in enumerate(eachline(chomp, file))
+        if i % 5 == 1
+            chr, pos = split(split(line, ' ')[1], ':')
+            pos = parse(Int, pos)
+        elseif i % 5 == 2
+            q = line
+        elseif i % 5 == 3
+            a = line
+        elseif i % 5 == 4
+            t = line
+        elseif i % 5 == 0
+            l, p = 1, 1
+            for s in 1:length(a)
+
+            end
+        end
+    end
+end
+
+@main function find_fusion(alignments...)
+    local chr, pos, l
+    for file in alignments, (i, line) in enumerate(eachline(chomp, file))
+        if i % 5 == 1
+            chr, pos = split(split(line, ' ')[1], ':')
+            pos = parse(Int, pos)
+        elseif i % 5 == 2
+            l = count(x->x!='-', line)
+        elseif i % 5 == 3
+            if count(x->x!='|', line) / length(line) > .98
+                prt(chr, pos)
+                prt(chr, pos + l - 1)
             end
         end
     end
