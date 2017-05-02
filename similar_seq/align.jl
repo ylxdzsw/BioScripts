@@ -63,7 +63,6 @@ function get_variants!(i::Int, j::Int, P::Matrix{Byte}, buf)
     end
 
     while P[i, j] >> 4 != 0
-        println(bits(P[i,j]))
         l += 1
         if P[i, j] & (MAT | SNP) != 0
             i += 1
@@ -134,13 +133,13 @@ function dp_report(q::AbstractBytes, t::AbstractBytes, F::Matrix{Int}, P::Matrix
     result
 end
 
-"Align two sequences"
-@main function main(a::String, b::String; mismatch::Int=12, gap_open::Int=18, gap_extend::Int=3, threshold::Int=64)
-    a, b = a.data, b.data
-    l1, l2 = length(a), length(b)
-    F = Matrix{Int}(l1, l2)
-    P = Matrix{Byte}(l1, l2)
-    dp_fill!(a, b, F, P, mismatch, gap_open, gap_extend)
-    v = dp_report(a, b, F, P, threshold)
-    foreach(v->println(v[3]), v)
-end
+# "Align two sequences"
+# @main function main(a::String, b::String; mismatch::Int=12, gap_open::Int=18, gap_extend::Int=3, threshold::Int=64)
+#     a, b = a.data, b.data
+#     l1, l2 = length(a), length(b)
+#     F = Matrix{Int}(l1, l2)
+#     P = Matrix{Byte}(l1, l2)
+#     dp_fill!(a, b, F, P, mismatch, gap_open, gap_extend)
+#     v = dp_report(a, b, F, P, threshold)
+#     foreach(v->println(v[3]), v)
+# end

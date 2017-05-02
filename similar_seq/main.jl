@@ -161,6 +161,19 @@ end
     end
 end
 
+@main function rebatch()
+    i, c, f = 0, 0, open("rebatch_000.txt", "w")
+    for line in eachline(STDIN)
+        write(f, line)
+        c += length(split(line, '\t')) - 2
+
+        if c > 2048
+            f = open(@sprintf("rebatch_%03d.txt", i += 1), "w")
+            c = 0
+        end
+    end
+end
+
 @main function report_alignments(batch)
     ref, anchors = load_data()
     ref_rv       = reverse_complement(ref)
@@ -193,6 +206,7 @@ end
     end
 
     flush(STDOUT)
+    run(`rm $batch`)
 end
 
 @main function fucking_region(bed, alignments...)
@@ -237,8 +251,9 @@ end
     # end
 end
 
+"use `sort -u -k1,4 file` to get unique variants"
 @main function find_variants(alignments...)
-    local chr, pos, q, a ,t
+    local chr, pos, q, a, t
     for file in alignments, (i, line) in enumerate(eachline(chomp, file))
         if i % 5 == 1
             chr, pos = split(split(line, ' ')[1], ':')
@@ -250,9 +265,51 @@ end
         elseif i % 5 == 4
             t = line
         elseif i % 5 == 0
-            l, p = 1, 1
+            p, l = 1, 0
             for s in 1:length(a)
-
+                if a[s] == '|' # match
+                    if l > 0
+                        prt(chr, p, q[s-l:s-1], '-', "$(file[9:11]):$(i-4)")
+                    elseif l < 0
+                        prt(chr, p, '-', t[s+l:s-1], "$(file[9:11]):$(i-4)")
+                    end
+                    pos += 1
+                    l = 0
+                elseif q[s] == '-' # insertion
+                    if l > 0
+                        warn("deletion immediately followed by insertion")
+                        prt(chr, p, q[s-l:s-1], '-', "$(file[9:11]):$(i-4)")
+                        p = pos - 1
+                        l = -1
+                    elseif l == 0
+                        p = pos - 1
+                        l = -1
+                    elseif l < 0
+                        l -= 1
+                    end
+                elseif t[s] == '-' # deletion
+                    if l > 0
+                        l += 1
+                    elseif l == 0
+                        p = pos
+                        l = 1
+                    elseif l < 0
+                        warn("insertion immediately followed by deletion")
+                        prt(chr, p, '-', t[s+l:s-1], "$(file[9:11]):$(i-4)")
+                        p = pos
+                        l = 1
+                    end
+                    pos += 1
+                else # snp
+                    if l > 0
+                        prt(chr, p, q[s-l:s-1], '-', "$(file[9:11]):$(i-4)")
+                    elseif l < 0
+                        prt(chr, p, '-', t[s+l:s-1], "$(file[9:11]):$(i-4)")
+                    end
+                    prt(chr, pos, q[s], t[s], "$(file[9:11]):$(i-4)")
+                    pos += 1
+                    l = 0
+                end
             end
         end
     end
@@ -267,7 +324,7 @@ end
         elseif i % 5 == 2
             l = count(x->x!='-', line)
         elseif i % 5 == 3
-            if count(x->x!='|', line) / length(line) > .98
+            if count(x->x=='|', line) / length(line) > .98
                 prt(chr, pos)
                 prt(chr, pos + l - 1)
             end

@@ -1,0 +1,21 @@
+using OhMyJulia
+
+const dpos, dcode, dreads, dvariants, dbases, dunique = Int[], Int[], Int[], Int[], Int[], Int[]
+
+for line in eachline("result")
+    s, l, d, n, g = split(line[2:end-2], ',')
+    s = parse(UInt64, s)
+    pos = Int(s >>> 32) | Int((s & 0xff000000) << 8)
+    code = Int(s & 0x00ffffff)
+
+    l, d, n, g = map(x->parse(Int, x), (l, d, n, g))
+
+    push!(dpos, pos)
+    push!(dcode, code)
+    push!(dreads, l)
+    push!(dvariants, d)
+    push!(dbases, n)
+    push!(dunique, g)
+end
+
+groupby(car, (x,y)->,  zip(dpos, dcode))

@@ -19,7 +19,10 @@ const X, y = let data = readtable(car(ARGS), separator='\t'),
     end
 
     X = transform(fit(PCA, X, pratio=1., maxoutdim=2), X)
-    X .+= abs.(minimum(X, 2))
+
+    drop = (X[1, :] .> mean(X[1, :])) & (y .!= y[1]) & rand(Bool, length(y))
+    X = X[:, !drop]
+    y = y[!drop]
 
     while true
         outlier = mapslices(any, abs.(X .- mean(X, 2)) .> 5std(X, 2), 1)[:]
@@ -31,6 +34,9 @@ const X, y = let data = readtable(car(ARGS), separator='\t'),
             break
         end
     end
+
+    X = (X .- minimum(X, 2)) ./ 1.02(maximum(X, 2) .- minimum(X, 2))
+    X .+= .01
 
     X, y
 end
@@ -90,6 +96,11 @@ STDOUT << """<script>
                         xAxis: 'max',
                         yAxis: 'max'
                     }]]
+                },
+                itemStyle: {
+                    normal: {
+                        color: '#1a1'
+                    }
                 }
             }, {
                 name: '$(labels[2])',
@@ -111,6 +122,11 @@ STDOUT << """<script>
                         xAxis: 'max',
                         yAxis: 'max'
                     }]]
+                },
+                itemStyle: {
+                    normal: {
+                        color: '#e10'
+                    }
                 }
             }
         ]
